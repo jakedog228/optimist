@@ -1,59 +1,49 @@
 import os
 import threading
 import time
-from collections import defaultdict, deque
-from llm_tool import tool
-import openai
-
-import logging
-logging.basicConfig(
-    level=logging.INFO,
-)
+import random
+from datetime import timedelta
 
 from AutoDiscord import DiscordAccount, PacketType
-from storage import save_turn, get_recent_history, get_settings
+from storage import append_turn, load_context
+from common import chat_completion
+from sweeper import sweeper
 
+import logging
+from rich.logging import RichHandler
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s", # '%(asctime)s [%(name)s] [%(levelname)s] %(message)s',
+    datefmt="[%X]",
+    handlers=[RichHandler()]
+)
 
 # ---------- basic config ----------
-LITELLM_API_KEY = os.getenv("LITELLM_API_KEY")
-DISCORD_TOKEN   = os.getenv("DISCORD_TOKEN")
-MODEL_NAME      = os.getenv("MODEL", "gpt-4.1-mini")
-MAX_HISTORY_TURNS = int(os.getenv("HISTORY_MSGS", 50))  # per speaker
 SYSTEM_PROMPT   = os.getenv(
     "SYSTEM_PROMPT",
-    "You are a friendly, concise Discord assistant."
+    "You are \"Optimist\", a friendly, supportive friend for those in need. \n"
+    "You are a service provided by the Optimist Club of Plymouth-Canton, a non-profit organization in Michigan. \n"
+    "If asked, be open and self-aware about your limitations, but reinforce that you still want to help where you can. \n"
+    "Your goal is to give the user someone to talk to, who will listen non-judgmentally and care unconditionally. \n"
+    "Respond to users empathetically, acknowledging their feelings and experiences and asking follow-up questions. \n"
+    "Avoid berating the user with questions; be an engaging conversationalist, and help the user explore their thoughts and feelings by conveying and expressing your own. \n"
+    "Encourage the user's self-expression in a safe and non-threatening way. Data is completely private and not handled by any human reviewers. \n"
+    "If the user is in distress, adopt a more serious tone, but still be supportive. \n"
+    "You are a friend, not a therapist; avoid clinical or preachy language. \n"
+    "Finally, keep the conversation interesting and useful, and adapt to suit whatever the user needs! \n"
 )
-
-if not DISCORD_TOKEN:
-    raise ValueError("Set DISCORD_TOKEN (or TOKEN) in your environment")
-if not LITELLM_API_KEY:
-    raise ValueError("Set LITELLM_API_KEY in your environment")
-
-
-llm = openai.OpenAI(
-    base_url=os.getenv("LITELLM_PROXY_URL", "http://localhost:4000"),
-    api_key=LITELLM_API_KEY,
-)
-
-def chat_completion(messages: list[dict], *, end_user: str):
-    """
-    Send the request through the proxy, tagging it with Discord user-id
-    so spend is broken down per account in the dashboard.
-    """
-    resp = llm.chat.completions.create(
-        model=MODEL_NAME,
-        messages=messages,
-        user=end_user
-    )
-
-    return resp.choices[0].message.content.strip()
-
 
 # ---------- Discord wiring ----------
+DISCORD_TOKEN   = os.getenv("DISCORD_TOKEN")
+if not DISCORD_TOKEN:
+    raise ValueError("Set DISCORD_TOKEN (or TOKEN) in your environment")
+
 client = DiscordAccount(DISCORD_TOKEN, do_reconnect=True)
 BOT_USER_ID = client.info["user"]["id"]  # so we can ignore ourselves
 
-def generate_and_send(user_id: str, channel_id: str, reply_to_id: str, msgs: list[dict]):
+
+def generate_and_send(channel_id: str, reply_to_id: str, msgs: list[dict]):
     """Runs inside a worker thread – sends typing, gets LLM reply, posts back."""
     # Show typing indicator while the model thinks
     def typing_loop():
@@ -62,15 +52,16 @@ def generate_and_send(user_id: str, channel_id: str, reply_to_id: str, msgs: lis
             time.sleep(8)  # Discord’s typing indicator lasts 10s, and is extended every 8s
 
     stop_flag = threading.Event()
-    threading.Thread(target=typing_loop, daemon=True).start()
+    typing_thread = threading.Thread(target=typing_loop, daemon=True)
+    typing_thread.start()
 
     try:
 
         # Get the assistant's reply
-        assistant_reply = chat_completion(msgs, end_user=user_id)
-
-        # Update memory with the assistant's reply
-        save_turn(user_id, "assistant", assistant_reply)
+        logging.debug(f"Calculating response for {len(msgs)} turns: {msgs}")
+        assistant_reply = chat_completion(msgs, end_user=channel_id)
+        time.sleep(random.uniform(0.5, 1.5))  # simulate some delay
+        logging.info(f"Assistant reply: {assistant_reply}")
 
         # Post the reply, threading it to the original user message
         client.send_message(
@@ -80,39 +71,73 @@ def generate_and_send(user_id: str, channel_id: str, reply_to_id: str, msgs: lis
         )
     finally:
         stop_flag.set()   # stop typing loop
+        typing_thread.join(timeout=1)  # wait for the thread to finish
+
 
 @client.on_packet([PacketType.MESSAGE_CREATE])
 def handle_message(pkt: dict):
     """Main entry-point for each incoming Discord message."""
     # Ignore messages from ourselves or other bots
-    author_id   = pkt["author"]["id"]
+    author      = pkt["author"]
     channel_id  = pkt["channel_id"]
     message_id  = pkt["id"]
     content     = pkt["content"]
 
-    # get chat history fresh from disk
-    msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
-    msgs += get_recent_history(author_id, MAX_HISTORY_TURNS)
+    is_dm = pkt["channel_type"] == 1  # 1 indicates a DM channel
+    # Only process DMs
+    if not is_dm:
+        logging.debug(f"Discord non-DM message: {content}")
+        return
 
-    if author_id == BOT_USER_ID or pkt["author"].get("bot"):
-        logging.debug(f"Ignoring message from self or bot: {content}")
+    # If the message is from the bot, just add the turn and return
+    if author["id"] == BOT_USER_ID:
+        append_turn(channel_id, "assistant", content)
         return
 
     # save the message to the database
-    save_turn(author_id, "user", content)
+    logging.info(f"Received message from user {author.get('username')}: {content}")
+    append_turn(channel_id, "user", content)
+
+    # get chat history fresh from disk
+    msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
+    msgs += load_context(channel_id)
 
     # ----- spawn a worker thread so we don't block the websocket heartbeat -----
     threading.Thread(
         target=generate_and_send,
-        args=(author_id, channel_id, message_id, msgs),
+        args=(channel_id, message_id, msgs),
         daemon=True
     ).start()
 
 
 # ---------- run ----------
 if __name__ == "__main__":
+    SWEEPER_INTERVAL_MINS = int(os.getenv("SWEEPER_INTERVAL_MINS", 5)) # Time between sweeps
+    CONVERSATION_MAX_IDLE_AGE_MINS = int(os.getenv("CONVERSATION_MAX_IDLE_AGE_MINS", 10))  # Time before a conversation is considered inactive
+
+    # Start the sweeper thread
+    threading.Thread(target=sweeper, args=(timedelta(minutes=CONVERSATION_MAX_IDLE_AGE_MINS), SWEEPER_INTERVAL_MINS), daemon=True).start()
+    logging.info("Sweeper started")
+
+    # Accept all incoming friend requests
+    @client.on_packet([PacketType.RELATIONSHIP_ADD])
+    def accept_friend_request(pkt: dict):
+        """Accept all incoming friend requests."""
+        user_id = pkt["user"]["id"]
+        modifier_type = pkt["type"]
+        logging.info(f"Received request from user {pkt['user']['username']}: {modifier_type}")
+        time.sleep(random.uniform(3, 7))  # simulate some delay
+        if modifier_type == 3:  # 3 indicates a friend request
+            logging.info(f"Accepting friend request from {user_id}")
+            res = client.modify_friendship(user_id, action="accept")
+            if res.status_code != 204:
+                logging.error(f"Failed to accept friend request from {user_id}: {res.status_code}")
+
+    # Start the Discord client
     try:
         client.start_listeners()  # blocking
     except KeyboardInterrupt:
-        print("Shutting down…")
+        logging.info("Shutting down…")
+    finally:
         client.close_session()
+        logging.info("Application closed.")

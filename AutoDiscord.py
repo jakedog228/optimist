@@ -28,6 +28,7 @@ class PacketType(enum.Enum):
     CHANNEL_UNREAD_UPDATE = "CHANNEL_UNREAD_UPDATE"
     VOICE_STATE_UPDATE = "VOICE_STATE_UPDATE"
     CONVERSATION_SUMMARY_UPDATE = "CONVERSATION_SUMMARY_UPDATE"
+    RELATIONSHIP_ADD = "RELATIONSHIP_ADD"
     NONE = None
 
 
@@ -175,6 +176,20 @@ class DiscordAccount:
                 print(f"Failed to request space for {filename}: {res.text}")
 
         return uploaded_files
+
+    def modify_friendship(self, user_id: str or int, action: str) -> requests.Response:
+        """Handles a friend by user ID."""
+        url = f"{API_BASE}/users/@me/relationships/{user_id}"
+        if action == "accept":
+            payload = {"confirm_stranger_request": True}
+            res = requests.put(url, headers=self.headers, json=payload)
+        elif action == "remove" or action == "reject":
+            res = requests.delete(url, headers=self.headers)
+        elif action == "request":
+            res = requests.put(url, headers=self.headers)
+        else:
+            raise ValueError("Invalid action. Use 'accept', 'reject', 'request', or 'remove'.")
+        return res
 
     def create_session(self) -> (websocket.WebSocket, dict):
 
@@ -326,13 +341,10 @@ class DiscordAccount:
 
     def _handle_packet(self, packet):
         """Dispatch the packet to the appropriate listeners."""
-        packet_type = packet[
-            't']  # the type of gateway event (opcode: 0) being sent, REF: https://discord.com/developers/docs/topics/gateway#list-of-intents
+        packet_type = packet['t']  # the type of gateway event (opcode: 0) being sent, REF: https://discord.com/developers/docs/topics/gateway#list-of-intents
         packet_sequence = packet['s']  # the order number in which the event occurred
-        packet_opcode = packet[
-            'op']  # The type of packet being sent, REF: https://discord.com/developers/docs/topics/opcodes-and-status-codes
-        packet_data = packet[
-            'd']  # the data in the packet, REF: MORE INFO: https://discord.com/developers/docs/topics/gateway-events#receive-events
+        packet_opcode = packet['op']  # The type of packet being sent, REF: https://discord.com/developers/docs/topics/opcodes-and-status-codes
+        packet_data = packet['d']  # the data in the packet, REF: MORE INFO: https://discord.com/developers/docs/topics/gateway-events#receive-events
 
         # Optional: Add check for heartbeat ACK (op 11) or other ops if needed
         if packet_opcode == 11:  # Opcode 11: Heartbeat ACK
