@@ -25,7 +25,7 @@ Available 24/7, Optimist is anonymously accessible friend to anyone with a Disco
 > WARNING: This was a demo video recorded for the hackathon, with the theme of combating mental health crises. 
 > As such, it contains some sensitive topics and may not be suitable for all audiences. Trigger warning for **Suicide**.
 
-[Insert Demo Video Here]
+https://github.com/user-attachments/assets/b6265714-400e-4816-ad15-2e0a1e375870
 
 ---
 
@@ -70,7 +70,7 @@ python main.py
 
 And if everything worked, you should see something like this:
 
-[Insert Screenshot of Bot Running Here]
+![image](https://github.com/user-attachments/assets/cefeee40-4cac-4ce6-9134-31aae12ab6bb)
 
 Shoot the bot a DM to start chatting!
 
@@ -100,16 +100,18 @@ One of the biggest concerns with using LLMs as long-term companions is the risk 
 * If enabled, the bot will DM again after a couple of days of silence (depending on user's stated preference)
 * The bot will only check in during the user’s detected active hours (to avoid inconvenient/unhealthy habits).
 
+![image](https://github.com/user-attachments/assets/15275829-f733-4733-8dbb-60f43a462cc6)
+
 ---
 
 ## Public Instance
 
 If you want to talk to Optimist without running it locally, shoot our public instance a DM on Discord!
 
-[Add link to public instance here]
+<img src="https://github.com/user-attachments/assets/739d898d-5a33-4a61-9713-be0b204befa9" alt="drawing" width="400"/>
 
 **Disclaimer:** This is a public instance of the bot, and we cannot guarantee the privacy of your conversations. Please do not share any sensitive information with the bot. We are not responsible for any loss of data or temporary/permanent downtime. Use at your own risk.
 
 ---
 
-> "Self-care is the gentle art you weave, and a sacred gift you must believe" - Optimist
+> "Self-care is the gentle art you weave, and a sacred gift you must believe" - Optimist, out of context
