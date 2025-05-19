@@ -1,0 +1,15 @@
+# ---- Core LLM & API ----
+openai>=1.14           # Chat & embeddings
+
+# ---- HTTP / WebSocket ----
+requests>=2.32         # REST calls (Discord HTTP)
+websocket-client>=1.7  # Discord Gateway socket
+
+# ---- Data & Persistence ----
+sqlmodel>=0.0.17       # ORM layer (depends on SQLAlchemy & Pydantic-v2)
+sqlalchemy>=2.0        # SQL backend for SQLModel
+numpy>=1.26            # Embedding similarity math
+
+# ---- Other ----
+rich>=13.7             # Pretty-printed logs
+python-dotenv~=1.1.0   # Environment variables
