@@ -18,6 +18,10 @@ import logging
 from rich.logging import RichHandler
 from rich.console import Console
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(message)s", # '%(asctime)s [%(name)s] [%(levelname)s] %(message)s',
