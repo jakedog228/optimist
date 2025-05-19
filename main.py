@@ -3,11 +3,10 @@ import threading
 import time
 import random
 import json
-from typing import List, Dict, Any, Optional, cast
+from typing import List, Dict, Any, Optional
 from datetime import timedelta
 
 from openai.types.chat import ChatCompletionMessageToolCall, ChatCompletionMessage
-from werkzeug.debug.tbtools import SUMMARY_HTML
 
 from AutoDiscord import DiscordAccount, PacketType
 from proactive_sweeper import proactive_checkin_loop

@@ -5,7 +5,6 @@ from sqlmodel import SQLModel, Field, create_engine, Session, select
 from sqlalchemy import Column, Text, delete
 import json
 import numpy as np
-from llm_tool import tool
 
 from common import chat_completion, get_embedding
 
